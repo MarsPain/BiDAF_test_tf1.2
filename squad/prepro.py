@@ -154,6 +154,7 @@ def prepro_each(args, data_type, start_ratio=0.0, stop_ratio=1.0, out_name="defa
             cxp.append(cxi)
             pp.append(context)
 
+            #将paragraphs中的words添加到word_counter中，用以根据预训练的glove文件转换成对应的词向量
             for xij in xi:
                 for xijk in xij:
                     word_counter[xijk] += len(para['qas'])
@@ -205,17 +206,18 @@ def prepro_each(args, data_type, start_ratio=0.0, stop_ratio=1.0, out_name="defa
                 else:
                     na.append(False)
 
+                #将问题中的words添加到word_counter中，用以根据预训练的glove文件转换成对应的词向量
                 for qij in qi:
                     word_counter[qij] += 1
                     lower_word_counter[qij.lower()] += 1
                     for qijk in qij:
                         char_counter[qijk] += 1
 
-                q.append(qi)
-                cq.append(cqi)
-                y.append(yi)
+                q.append(qi)    #问题question
+                cq.append(cqi)  #问题question中的words的list
+                y.append(yi)    #答案answer在原文中的开始和结束索引
                 cy.append(cyi)
-                rx.append(rxi)
+                rx.append(rxi)     #原文paragraphs的id及原文
                 rcx.append(rxi)
                 ids.append(qa['id'])
                 idxs.append(len(idxs))
@@ -224,12 +226,15 @@ def prepro_each(args, data_type, start_ratio=0.0, stop_ratio=1.0, out_name="defa
         if args.debug:
             break
 
+    #根据原论文，原文和问题的word根据预训练的词向量glove进行初始化
     word2vec_dict = get_word2vec(args, word_counter)
     lower_word2vec_dict = get_word2vec(args, lower_word_counter)
 
     # add context here
+    # data是完整的数据
     data = {'q': q, 'cq': cq, 'y': y, '*x': rx, '*cx': rcx, 'cy': cy,
             'idxs': idxs, 'ids': ids, 'answerss': answerss, '*p': rx, 'na': na}
+    #shared是共享的语料库？
     shared = {'x': x, 'cx': cx, 'p': p,
               'word_counter': word_counter, 'char_counter': char_counter, 'lower_word_counter': lower_word_counter,
               'word2vec': word2vec_dict, 'lower_word2vec': lower_word2vec_dict}

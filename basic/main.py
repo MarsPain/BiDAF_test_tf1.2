@@ -63,21 +63,22 @@ def _config_debug(config):
 
 
 def _train(config):
-    data_filter = get_squad_data_filter(config)
+    data_filter = get_squad_data_filter(config) #对数据进行过滤（验证数据是否合理？）
     train_data = read_data(config, 'train', config.load, data_filter=data_filter)
     dev_data = read_data(config, 'dev', True, data_filter=data_filter)
     update_config(config, [train_data, dev_data])
-
+    #若进行debug，则运行_config_debug限制迭代次数和batch
     _config_debug(config)
 
-    word2vec_dict = train_data.shared['lower_word2vec'] if config.lower_word else train_data.shared['word2vec']
-    word2idx_dict = train_data.shared['word2idx']
-    idx2vec_dict = {word2idx_dict[word]: vec for word, vec in word2vec_dict.items() if word in word2idx_dict}
+    #加载并初始化word2vec_dict、word2idx_dict、idx2vec_dict，用于embedding矩阵的初始化
+    word2vec_dict = train_data.shared['lower_word2vec'] if config.lower_word else train_data.shared['word2vec'] #word to vec的字典
+    word2idx_dict = train_data.shared['word2idx']   #word to id的字典
+    idx2vec_dict = {word2idx_dict[word]: vec for word, vec in word2vec_dict.items() if word in word2idx_dict} #id to word的字典
     emb_mat = np.array([idx2vec_dict[idx] if idx in idx2vec_dict
                         else np.random.multivariate_normal(np.zeros(config.word_emb_size), np.eye(config.word_emb_size))
                         for idx in range(config.word_vocab_size)])
     config.emb_mat = emb_mat
-
+    #昨天看到这里
     # construct model graph and variables (using default graph)
     pprint(config.__flags, indent=2)
     models = get_multi_gpu_models(config)
