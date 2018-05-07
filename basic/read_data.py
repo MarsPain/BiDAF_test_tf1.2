@@ -111,8 +111,10 @@ class DataSet(object):
             batch_ds = DataSet(batch_data, self.data_type, shared=self.shared)
             yield batch_idxs, batch_ds
 
+    #根据GPU数量（num_batches_per_step）和每一个epoch的batch数量（num_steps）获取batchs
     def get_multi_batches(self, batch_size, num_batches_per_step, num_steps=None, shuffle=False, cluster=False):
         batch_size_per_step = batch_size * num_batches_per_step
+        #batch_size*GPU数量（num_batches_per_step）即为训练时每一步的batch_size
         batches = self.get_batches(batch_size_per_step, num_batches=num_steps, shuffle=shuffle, cluster=cluster)
         multi_batches = (tuple(zip(grouper(idxs, batch_size, shorten=True, num_groups=num_batches_per_step),
                          data_set.divide(num_batches_per_step))) for idxs, data_set in batches)

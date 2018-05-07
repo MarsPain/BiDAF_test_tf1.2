@@ -78,7 +78,7 @@ def _train(config):
                         else np.random.multivariate_normal(np.zeros(config.word_emb_size), np.eye(config.word_emb_size))
                         for idx in range(config.word_vocab_size)])
     config.emb_mat = emb_mat
-    #昨天看到这里
+
     # construct model graph and variables (using default graph)
     pprint(config.__flags, indent=2)
     models = get_multi_gpu_models(config)

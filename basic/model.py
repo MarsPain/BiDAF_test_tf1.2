@@ -34,10 +34,10 @@ class Model(object):
         N, M, JX, JQ, VW, VC, W = \
             config.batch_size, config.max_num_sents, config.max_sent_size, \
             config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.max_word_size
-        self.x = tf.placeholder('int32', [N, None, None], name='x')
-        self.cx = tf.placeholder('int32', [N, None, None, W], name='cx')
-        self.x_mask = tf.placeholder('bool', [N, None, None], name='x_mask')
-        self.q = tf.placeholder('int32', [N, None], name='q')
+        self.x = tf.placeholder('int32', [N, None, None], name='x') #文章context的占位符
+        self.cx = tf.placeholder('int32', [N, None, None, W], name='cx')    #将context视为字符集合的占位符
+        self.x_mask = tf.placeholder('bool', [N, None, None], name='x_mask')    #context中有词和无词标注的占位符
+        self.q = tf.placeholder('int32', [N, None], name='q')   #同上，少的一维是M，M为context最多的sentences数量，query只有一句，所以不存在这一维度
         self.cq = tf.placeholder('int32', [N, None, W], name='cq')
         self.q_mask = tf.placeholder('bool', [N, None], name='q_mask')
         self.y = tf.placeholder('bool', [N, None, None], name='y')
@@ -81,8 +81,10 @@ class Model(object):
         M = tf.shape(self.x)[1]
         dc, dw, dco = config.char_emb_size, config.word_emb_size, config.char_out_size
 
+        # 嵌入层
         with tf.variable_scope("emb"):
-            if config.use_char_emb:
+            # 字符嵌入层
+            if config.use_char_emb: #若需要字符嵌入层
                 with tf.variable_scope("emb_var"), tf.device("/cpu:0"):
                     char_emb_mat = tf.get_variable("char_emb_mat", shape=[VC, dc], dtype='float')
 
@@ -92,9 +94,11 @@ class Model(object):
                     Acx = tf.reshape(Acx, [-1, JX, W, dc])
                     Acq = tf.reshape(Acq, [-1, JQ, W, dc])
 
+                    # CNN的滤波器参数
                     filter_sizes = list(map(int, config.out_channel_dims.split(',')))
                     heights = list(map(int, config.filter_heights.split(',')))
                     assert sum(filter_sizes) == dco, (filter_sizes, dco)
+                    #字符向量通过CNN训练得到
                     with tf.variable_scope("conv"):
                         xx = multi_conv1d(Acx, filter_sizes, heights, "VALID",  self.is_train, config.keep_prob, scope="xx")
                         if config.share_cnn_weights:
@@ -104,22 +108,24 @@ class Model(object):
                             qq = multi_conv1d(Acq, filter_sizes, heights, "VALID", self.is_train, config.keep_prob, scope="qq")
                         xx = tf.reshape(xx, [-1, M, JX, dco])
                         qq = tf.reshape(qq, [-1, JQ, dco])
-
+            # 词嵌入层
             if config.use_word_emb:
                 with tf.variable_scope("emb_var"), tf.device("/cpu:0"):
                     if config.mode == 'train':
                         word_emb_mat = tf.get_variable("word_emb_mat", dtype='float', shape=[VW, dw], initializer=get_initializer(config.emb_mat))
                     else:
                         word_emb_mat = tf.get_variable("word_emb_mat", shape=[VW, dw], dtype='float')
-                    if config.use_glove_for_unk:
+                    if config.use_glove_for_unk:     #若调用已训练好的词嵌入文件
                         word_emb_mat = tf.concat(axis=0, values=[word_emb_mat, self.new_emb_mat])
 
                 with tf.name_scope("word"):
+                    # 将文章主体context：x和问题query：q转换为词向量
+                    # embedding_lookup(params, ids),根据ids寻找params中的第id行
                     Ax = tf.nn.embedding_lookup(word_emb_mat, self.x)  # [N, M, JX, d]
                     Aq = tf.nn.embedding_lookup(word_emb_mat, self.q)  # [N, JQ, d]
                     self.tensor_dict['x'] = Ax
                     self.tensor_dict['q'] = Aq
-                if config.use_char_emb:
+                if config.use_char_emb: #若进行了字符嵌入，在指定维度上将字符嵌入和词嵌入进行拼接
                     xx = tf.concat(axis=3, values=[xx, Ax])  # [N, M, JX, di]
                     qq = tf.concat(axis=2, values=[qq, Aq])  # [N, JQ, di]
                 else:
@@ -127,6 +133,7 @@ class Model(object):
                     qq = Aq
 
         # highway network
+        # 经过两层highway network得到context vector∈ R^(d*T)和query vectorQ∈R^(d∗J)
         if config.highway:
             with tf.variable_scope("highway"):
                 xx = highway_network(xx, config.highway_num_layers, True, wd=config.wd, is_train=self.is_train)
@@ -138,6 +145,7 @@ class Model(object):
 
         cell_fw = BasicLSTMCell(d, state_is_tuple=True)
         cell_bw = BasicLSTMCell(d, state_is_tuple=True)
+        # SwitchableDropoutWrapper为自定义的DropoutWrapper类
         d_cell_fw = SwitchableDropoutWrapper(cell_fw, self.is_train, input_keep_prob=config.input_keep_prob)
         d_cell_bw = SwitchableDropoutWrapper(cell_bw, self.is_train, input_keep_prob=config.input_keep_prob)
         cell2_fw = BasicLSTMCell(d, state_is_tuple=True)
@@ -152,11 +160,14 @@ class Model(object):
         cell4_bw = BasicLSTMCell(d, state_is_tuple=True)
         d_cell4_fw = SwitchableDropoutWrapper(cell4_fw, self.is_train, input_keep_prob=config.input_keep_prob)
         d_cell4_bw = SwitchableDropoutWrapper(cell4_bw, self.is_train, input_keep_prob=config.input_keep_prob)
+        # reduce_sum在指定的维度上求和（得到x和q的非空值总数），cast将输入的tensor映射到指定类型（此处为x_mask到int32）
         x_len = tf.reduce_sum(tf.cast(self.x_mask, 'int32'), 2)  # [N, M]
         q_len = tf.reduce_sum(tf.cast(self.q_mask, 'int32'), 1)  # [N]
 
         with tf.variable_scope("prepro"):
+            # Contextual Embedding Layer：对上一层得到的X和Q分别使用BiLSTM进行处理，分别捕捉X和Q中各自单词间的局部关系
             (fw_u, bw_u), ((_, fw_u_f), (_, bw_u_f)) = bidirectional_dynamic_rnn(d_cell_fw, d_cell_bw, qq, q_len, dtype='float', scope='u1')  # [N, J, d], [N, d]
+            # fw_u和bw_u分别为双向lstm的output
             u = tf.concat(axis=2, values=[fw_u, bw_u])
             if config.share_lstm_weights:
                 tf.get_variable_scope().reuse_variables()
@@ -168,10 +179,13 @@ class Model(object):
             self.tensor_dict['u'] = u
             self.tensor_dict['h'] = h
 
+        # 核心层Attention Flow Layer
         with tf.variable_scope("main"):
             if config.dynamic_att:
                 p0 = h
-                u = tf.reshape(tf.tile(tf.expand_dims(u, 1), [1, M, 1, 1]), [N * M, JQ, 2 * d])
+                # expand_dims()在矩阵指定位置增加维度
+                # tile()对矩阵的指定维度进行复制
+                u = tf.reshape(tf.tile(tf.expand_dims(u, 1), [1, M, 1, 1]), [N * M, JQ, 2 * d]) #先在索引1的位置添加一个维度，然后复制M（context中最多的sentence数量）次，使u和h能具有相同的维度
                 q_mask = tf.reshape(tf.tile(tf.expand_dims(self.q_mask, 1), [1, M, 1]), [N * M, JQ])
                 first_cell_fw = AttentionCell(cell2_fw, u, mask=q_mask, mapper='sim',
                                               input_keep_prob=self.config.input_keep_prob, is_train=self.is_train)
