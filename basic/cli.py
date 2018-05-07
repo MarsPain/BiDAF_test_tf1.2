@@ -23,8 +23,8 @@ flags.DEFINE_string("device_type", "gpu", "device for computing gradients (paral
 flags.DEFINE_integer("num_gpus", 1, "num of gpus or cpus for computing gradients [1]")
 
 # Essential training and test options
-flags.DEFINE_string("mode", "train", "trains | test | forward [test]")
-flags.DEFINE_boolean("load", False, "load saved data? [True]")
+flags.DEFINE_string("mode", "test", "train | test | forward [test]")
+flags.DEFINE_boolean("load", True, "load saved data? [True]")
 flags.DEFINE_bool("single", False, "supervise only the answer sentence? [False]")
 flags.DEFINE_boolean("debug", False, "Debugging mode? [False]")
 flags.DEFINE_bool('load_ema', True, "load exponential average of variables when testing?  [True]")
@@ -34,7 +34,7 @@ flags.DEFINE_bool("na", False, "Enable no answer strategy and learn bias? [False
 flags.DEFINE_float("th", 0.5, "Threshold [0.5]")
 
 # Training / test parameters
-flags.DEFINE_integer("batch_size", 30, "Batch size [60]")
+flags.DEFINE_integer("batch_size", 0, "Batch size [60]")
 flags.DEFINE_integer("val_num_batches", 100, "validation num batches [100]")
 flags.DEFINE_integer("test_num_batches", 0, "test num batches [0]")
 flags.DEFINE_integer("num_epochs", 12, "Total number of epochs for training [12]")
